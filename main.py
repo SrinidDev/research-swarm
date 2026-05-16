@@ -37,7 +37,7 @@ class ResearchRequest(BaseModel):
 async def health():
     return {"status": "ok"}
     
-@app.get("/",response=HTMLResponse)
+@app.get("/", response_class=HTMLResponse)
 async def root():
            return HTMLResponse(conent=open("ui/index.html").read())
 
