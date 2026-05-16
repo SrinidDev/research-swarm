@@ -37,10 +37,9 @@ class ResearchRequest(BaseModel):
 async def health():
     return {"status": "ok"}
     
-@app.get("/")
+@app.get("/",response=HTMLResponse)
 async def root():
-    with open("ui/index.html","r") as f:
-        return f.read()
+           return HTMLResponse(conent=open("ui/index.html").read())
 
 # ── Main endpoint ─────────────────────────────────────────────────────────────
 
