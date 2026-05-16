@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Research Swarm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ── Reset & base ─────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #080C0F;
+    --surface:   #0D1317;
+    --border:    #1A2328;
+    --muted:     #2A3840;
+    --text:      #E8EDF0;
+    --dim:       #5A7080;
+    --accent:    #00E5CC;
+    --accent2:   #0099FF;
+    --warn:      #FFB800;
+    --success:   #00D97E;
+    --error:     #FF4455;
+
+    --idle-bg:    #0D1317;
+    --idle-border:#1A2328;
+    --idle-glow:  transparent;
+
+    --work-bg:    #071A20;
+    --work-border:#00E5CC;
+    --work-glow:  rgba(0,229,204,0.15);
+
+    --done-bg:    #071A14;
+    --done-border:#00D97E;
+    --done-glow:  rgba(0,217,126,0.12);
+
+    --error-bg:   #1A0A0C;
+    --error-border:#FF4455;
+
+    --retry-bg:   #1A1200;
+    --retry-border:#FFB800;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    overflow: hidden;
+  }
+
+  /* ── Layout ───────────────────────────────────────────────────── */
+  .shell {
+    display: grid;
+    grid-template-rows: 56px 1fr;
+    grid-template-columns: 1fr 380px;
+    height: 100vh;
+    gap: 0;
+  }
+
+  /* ── Header ───────────────────────────────────────────────────── */
+  header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+
+  .logo span { color: var(--dim); }
+
+  .query-wrap {
+    flex: 1;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  #query-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 7px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  #query-input:focus { border-color: var(--accent); }
+  #query-input::placeholder { color: var(--dim); }
+
+  #run-btn {
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: 4px;
+    padding: 7px 18px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    flex-shrink: 0;
+  }
+
+  #run-btn:hover { opacity: 0.85; }
+  #run-btn:active { transform: scale(0.97); }
+  #run-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .status-pill {
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--dim);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    flex-shrink: 0;
+    transition: all 0.3s;
+  }
+
+  .status-pill.running { border-color: var(--accent); color: var(--accent); }
+  .status-pill.done    { border-color: var(--success); color: var(--success); }
+  .status-pill.error   { border-color: var(--error);   color: var(--error); }
+
+  /* ── Swarm canvas ─────────────────────────────────────────────── */
+  .canvas-wrap {
+    position: relative;
+    overflow: hidden;
+    background: var(--bg);
+  }
+
+  /* subtle grid */
+  .canvas-wrap::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.35;
+  }
+
+  svg#swarm-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ── Agent nodes ──────────────────────────────────────────────── */
+  .agent-node {
+    position: absolute;
+    width: 130px;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    cursor: default;
+    transition: transform 0.2s;
+  }
+
+  .agent-node:hover { transform: translate(-50%, -50%) scale(1.04); }
+
+  .node-ring {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    border: 2px solid var(--idle-border);
+    background: var(--idle-bg);
+    margin: 0 auto 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    position: relative;
+    transition: border-color 0.3s, background 0.3s, box-shadow 0.3s;
+    box-shadow: 0 0 0 transparent;
+  }
+
+  /* pulse ring when working */
+  .node-ring::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 1px solid var(--accent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .agent-node.working .node-ring {
+    border-color: var(--work-border);
+    background:   var(--work-bg);
+    box-shadow:   0 0 20px var(--work-glow);
+  }
+
+  .agent-node.working .node-ring::after {
+    opacity: 1;
+    animation: pulse-ring 1.4s ease-out infinite;
+  }
+
+  .agent-node.done .node-ring {
+    border-color: var(--done-border);
+    background:   var(--done-bg);
+    box-shadow:   0 0 16px var(--done-glow);
+  }
+
+  .agent-node.error .node-ring {
+    border-color: var(--error-border);
+    background:   var(--error-bg);
+  }
+
+  .agent-node.retrying .node-ring {
+    border-color: var(--retry-border);
+    background:   var(--retry-bg);
+    animation: wobble 0.5s ease-in-out;
+  }
+
+  @keyframes pulse-ring {
+    0%   { transform: scale(1);    opacity: 0.7; }
+    100% { transform: scale(1.5);  opacity: 0; }
+  }
+
+  @keyframes wobble {
+    0%,100% { transform: rotate(0deg); }
+    25%     { transform: rotate(-4deg); }
+    75%     { transform: rotate(4deg); }
+  }
+
+  .node-label {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dim);
+    transition: color 0.3s;
+  }
+
+  .agent-node.working .node-label { color: var(--accent); }
+  .agent-node.done    .node-label { color: var(--success); }
+  .agent-node.error   .node-label { color: var(--error); }
+  .agent-node.retrying .node-label { color: var(--warn); }
+
+  .node-status {
+    font-size: 9px;
+    color: var(--dim);
+    margin-top: 3px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    min-height: 12px;
+    transition: color 0.3s;
+  }
+
+  .agent-node.working .node-status { color: var(--accent); }
+  .agent-node.done    .node-status { color: var(--success); }
+
+  /* ── SVG edges ────────────────────────────────────────────────── */
+  .edge { stroke: var(--muted); stroke-width: 1; fill: none; stroke-dasharray: 6 4; opacity: 0.5; }
+  .edge.active { stroke: var(--accent); stroke-dasharray: none; opacity: 1; animation: dash-flow 1s linear infinite; }
+  .edge.done   { stroke: var(--success); stroke-dasharray: none; opacity: 0.6; }
+
+  @keyframes dash-flow {
+    to { stroke-dashoffset: -20; }
+  }
+
+  /* data packet travelling along edge */
+  .packet {
+    r: 4;
+    fill: var(--accent);
+    filter: drop-shadow(0 0 4px var(--accent));
+  }
+
+  /* ── Side panel ───────────────────────────────────────────────── */
+  .panel {
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .tab {
+    flex: 1;
+    padding: 10px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dim);
+    cursor: pointer;
+    text-align: center;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .tab.active { color: var(--accent); border-color: var(--accent); }
+
+  .tab-body { flex: 1; overflow-y: auto; padding: 16px; display: none; }
+  .tab-body.active { display: block; }
+
+  /* scrollbar */
+  .tab-body::-webkit-scrollbar { width: 4px; }
+  .tab-body::-webkit-scrollbar-track { background: transparent; }
+  .tab-body::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 2px; }
+
+  /* ── Log panel ────────────────────────────────────────────────── */
+  .log-entry {
+    font-size: 11px;
+    line-height: 1.6;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .log-time { color: var(--dim); flex-shrink: 0; font-size: 10px; }
+  .log-agent { flex-shrink: 0; font-weight: 500; width: 70px; }
+  .log-msg { color: var(--text); opacity: 0.8; }
+
+  .log-agent.planner     { color: #A78BFA; }
+  .log-agent.retriever   { color: var(--accent2); }
+  .log-agent.validator   { color: var(--warn); }
+  .log-agent.synthesizer { color: #F472B6; }
+  .log-agent.critic      { color: var(--accent); }
+
+  /* ── Answer panel ─────────────────────────────────────────────── */
+  .answer-placeholder {
+    color: var(--dim);
+    font-size: 12px;
+    text-align: center;
+    margin-top: 60px;
+    line-height: 2;
+  }
+
+  .answer-placeholder .big { font-size: 32px; display: block; margin-bottom: 8px; }
+
+  .score-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .score-label { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  .score-track {
+    flex: 1;
+    height: 4px;
+    background: var(--muted);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .score-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+    border-radius: 2px;
+    transition: width 1s ease;
+  }
+
+  .score-value { font-size: 12px; font-weight: 500; color: var(--accent); }
+
+  .answer-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .sources-wrap { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .sources-label { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+
+  .source-link {
+    display: block;
+    font-size: 10px;
+    color: var(--accent2);
+    text-decoration: none;
+    padding: 3px 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.8;
+    transition: opacity 0.15s;
+  }
+
+  .source-link:hover { opacity: 1; }
+
+  .attempts-badge {
+    display: inline-block;
+    font-size: 9px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    color: var(--dim);
+    margin-bottom: 12px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  /* ── Plan panel ───────────────────────────────────────────────── */
+  .plan-strategy {
+    font-size: 11px;
+    color: var(--dim);
+    line-height: 1.6;
+    padding: 10px;
+    background: var(--bg);
+    border-radius: 4px;
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+  }
+
+  .subtask {
+    padding: 8px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    margin-bottom: 6px;
+    font-size: 11px;
+    background: var(--bg);
+  }
+
+  .subtask-id   { color: var(--dim); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .subtask-agent { display: inline-block; font-size: 9px; padding: 1px 7px; border-radius: 10px; margin: 3px 0; font-weight: 500; text-transform: uppercase; }
+  .subtask-agent.retriever   { background: rgba(0,153,255,0.15); color: var(--accent2); }
+  .subtask-agent.executor    { background: rgba(244,114,182,0.15); color: #F472B6; }
+  .subtask-agent.validator   { background: rgba(255,184,0,0.15);  color: var(--warn); }
+  .subtask-task { color: var(--text); opacity: 0.85; line-height: 1.5; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">Swarm<span>OS</span></div>
+    <div class="query-wrap">
+      <input id="query-input" type="text" placeholder="Enter your research query…"
+        value="Compare the top AI agent frameworks: LangGraph, CrewAI and AutoGen in 2025"/>
+      <button id="run-btn" onclick="runSwarm()">▶ Run</button>
+    </div>
+    <div class="status-pill" id="status-pill">idle</div>
+  </header>
+
+  <!-- Canvas -->
+  <div class="canvas-wrap" id="canvas">
+    <svg id="swarm-svg"></svg>
+    <!-- Agent nodes injected by JS -->
+  </div>
+
+  <!-- Side panel -->
+  <div class="panel">
+    <div class="panel-tabs">
+      <div class="tab active" onclick="switchTab('log')">Log</div>
+      <div class="tab" onclick="switchTab('answer')">Answer</div>
+      <div class="tab" onclick="switchTab('plan')">Plan</div>
+    </div>
+
+    <div class="tab-body active" id="tab-log">
+      <div id="log-list"></div>
+    </div>
+
+    <div class="tab-body" id="tab-answer">
+      <div id="answer-content">
+        <div class="answer-placeholder">
+          <span class="big">🔬</span>
+          Run a query to see<br/>the swarm's answer here
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-body" id="tab-plan">
+      <div id="plan-content">
+        <div class="answer-placeholder">
+          <span class="big">📋</span>
+          The planner's task<br/>breakdown will appear here
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+const API = 'http://localhost:8000';
+
+// Agent definitions — positions are % of canvas (cx, cy)
+const AGENTS = [
+  { id: 'planner',     label: 'Planner',     icon: '🧠', cx: 50, cy: 18 },
+  { id: 'retriever',   label: 'Retriever',   icon: '🔍', cx: 25, cy: 48 },
+  { id: 'validator',   label: 'Validator',   icon: '✅', cx: 75, cy: 48 },
+  { id: 'synthesizer', label: 'Synthesizer', icon: '✍️', cx: 50, cy: 72 },
+  { id: 'critic',      label: 'Critic',      icon: '⚖️', cx: 50, cy: 92 },
+];
+
+// Edges — which agents send data to which
+const EDGES = [
+  { from: 'planner',     to: 'retriever'   },
+  { from: 'planner',     to: 'validator'   },
+  { from: 'retriever',   to: 'synthesizer' },
+  { from: 'validator',   to: 'synthesizer' },
+  { from: 'synthesizer', to: 'critic'      },
+  { from: 'critic',      to: 'synthesizer' }, // retry loop
+];
+
+// ── State ───────────────────────────────────────────────────────────────────
+let nodeEls  = {};   // agent id → DOM node element
+let edgeEls  = {};   // "from→to" → SVG path element
+let running  = false;
+
+// ── Build the canvas ────────────────────────────────────────────────────────
+function buildCanvas() {
+  const canvas = document.getElementById('canvas');
+  const svg    = document.getElementById('swarm-svg');
+
+  // Draw edges first (behind nodes)
+  EDGES.forEach(e => {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.classList.add('edge');
+    path.setAttribute('id', `edge-${e.from}-${e.to}`);
+    svg.appendChild(path);
+    edgeEls[`${e.from}→${e.to}`] = path;
+  });
+
+  // Draw agent nodes
+  AGENTS.forEach(a => {
+    const el = document.createElement('div');
+    el.className = 'agent-node';
+    el.id = `node-${a.id}`;
+    el.style.left = `${a.cx}%`;
+    el.style.top  = `${a.cy}%`;
+    el.innerHTML = `
+      <div class="node-ring">${a.icon}</div>
+      <div class="node-label">${a.label}</div>
+      <div class="node-status" id="status-${a.id}">idle</div>
+    `;
+    canvas.appendChild(el);
+    nodeEls[a.id] = el;
+  });
+
+  // Position edges after DOM is ready
+  requestAnimationFrame(updateEdges);
+  window.addEventListener('resize', updateEdges);
+}
+
+function updateEdges() {
+  const canvas = document.getElementById('canvas');
+  const cw = canvas.offsetWidth;
+  const ch = canvas.offsetHeight;
+
+  EDGES.forEach(e => {
+    const fa = AGENTS.find(a => a.id === e.from);
+    const ta = AGENTS.find(a => a.id === e.to);
+    if (!fa || !ta) return;
+
+    const x1 = (fa.cx / 100) * cw;
+    const y1 = (fa.cy / 100) * ch;
+    const x2 = (ta.cx / 100) * cw;
+    const y2 = (ta.cy / 100) * ch;
+
+    // Curved path
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2 - 20;
+    const d  = `M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}`;
+    edgeEls[`${e.from}→${e.to}`].setAttribute('d', d);
+  });
+}
+
+// ── Agent status update ──────────────────────────────────────────────────────
+function setAgentStatus(id, status, detail) {
+  const node = nodeEls[id];
+  if (!node) return;
+
+  // Remove all state classes
+  node.classList.remove('idle', 'working', 'done', 'error', 'retrying');
+  node.classList.add(status);
+
+  // Update status text
+  const statusEl = document.getElementById(`status-${id}`);
+  if (statusEl) statusEl.textContent = status;
+
+  // Activate outgoing edges when working
+  if (status === 'working') {
+    EDGES.forEach(e => {
+      if (e.from === id) {
+        edgeEls[`${e.from}→${e.to}`]?.classList.add('active');
+        edgeEls[`${e.from}→${e.to}`]?.classList.remove('done');
+        animatePacket(e.from, e.to);
+      }
+    });
+  }
+
+  if (status === 'done') {
+    EDGES.forEach(e => {
+      if (e.from === id) {
+        edgeEls[`${e.from}→${e.to}`]?.classList.remove('active');
+        edgeEls[`${e.from}→${e.to}`]?.classList.add('done');
+      }
+    });
+  }
+
+  // Log the event
+  addLog(id, status, detail);
+}
+
+// ── Packet animation ─────────────────────────────────────────────────────────
+function animatePacket(fromId, toId) {
+  const key  = `${fromId}→${toId}`;
+  const path = edgeEls[key];
+  if (!path) return;
+
+  const svg    = document.getElementById('swarm-svg');
+  const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  circle.classList.add('packet');
+  svg.appendChild(circle);
+
+  const len      = path.getTotalLength();
+  const duration = 1200;
+  const start    = performance.now();
+
+  function step(now) {
+    const t   = Math.min((now - start) / duration, 1);
+    const pt  = path.getPointAtLength(t * len);
+    circle.setAttribute('cx', pt.x);
+    circle.setAttribute('cy', pt.y);
+    if (t < 1) {
+      requestAnimationFrame(step);
+    } else {
+      circle.remove();
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+// ── Log ──────────────────────────────────────────────────────────────────────
+function addLog(agent, status, detail) {
+  const list = document.getElementById('log-list');
+  const now  = new Date().toLocaleTimeString('en', {hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+
+  let msg = status;
+  if (detail?.task)  msg += ` — ${String(detail.task).slice(0, 45)}`;
+  if (detail?.score) msg += ` — score: ${detail.score}`;
+  if (detail?.trust_score) msg += ` — trust: ${detail.trust_score}`;
+  if (detail?.error) msg += ` — ${detail.error}`;
+
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `
+    <span class="log-time">${now}</span>
+    <span class="log-agent ${agent}">${agent}</span>
+    <span class="log-msg">${msg}</span>
+  `;
+  list.prepend(entry);
+}
+
+// ── Tab switching ────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    const names = ['log', 'answer', 'plan'];
+    t.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tab-body').forEach(b => {
+    b.classList.toggle('active', b.id === `tab-${name}`);
+  });
+}
+
+// ── Render plan ──────────────────────────────────────────────────────────────
+function renderPlan(plan) {
+  const el = document.getElementById('plan-content');
+  const subtasksHTML = plan.subtasks.map(st => `
+    <div class="subtask">
+      <div class="subtask-id">${st.id}</div>
+      <span class="subtask-agent ${st.agent}">${st.agent}</span>
+      <div class="subtask-task">${st.task}</div>
+    </div>
+  `).join('');
+
+  el.innerHTML = `
+    <div class="plan-strategy">${plan.strategy}</div>
+    ${subtasksHTML}
+  `;
+  switchTab('plan');
+}
+
+// ── Render answer ────────────────────────────────────────────────────────────
+function renderAnswer(data) {
+  const score   = Math.round((data.score || 0) * 100);
+  const sources = (data.sources || []).slice(0, 6);
+
+  const sourcesHTML = sources.length
+    ? `<div class="sources-wrap">
+        <div class="sources-label">Sources</div>
+        ${sources.map(s => `<a class="source-link" href="${s}" target="_blank">${s}</a>`).join('')}
+       </div>`
+    : '';
+
+  document.getElementById('answer-content').innerHTML = `
+    <div class="attempts-badge">attempt ${data.attempts} of 3</div>
+    <div class="score-bar">
+      <span class="score-label">Quality</span>
+      <div class="score-track"><div class="score-fill" style="width:0%" id="score-fill"></div></div>
+      <span class="score-value">${score}%</span>
+    </div>
+    <div class="answer-text">${escapeHtml(data.answer)}</div>
+    ${sourcesHTML}
+  `;
+
+  // Animate score bar
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const fill = document.getElementById('score-fill');
+      if (fill) fill.style.width = `${score}%`;
+    });
+  });
+
+  switchTab('answer');
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;');
+}
+
+// ── Reset UI ─────────────────────────────────────────────────────────────────
+function resetUI() {
+  AGENTS.forEach(a => {
+    const node = nodeEls[a.id];
+    node.classList.remove('working','done','error','retrying');
+    document.getElementById(`status-${a.id}`).textContent = 'idle';
+  });
+  Object.values(edgeEls).forEach(e => {
+    e.classList.remove('active','done');
+  });
+  document.getElementById('log-list').innerHTML = '';
+  document.getElementById('answer-content').innerHTML = `
+    <div class="answer-placeholder">
+      <span class="big">⏳</span>
+      Swarm is running…<br/>answer will appear here
+    </div>`;
+  document.getElementById('plan-content').innerHTML = `
+    <div class="answer-placeholder">
+      <span class="big">⏳</span>
+      Waiting for planner…
+    </div>`;
+}
+
+// ── Main: run swarm ──────────────────────────────────────────────────────────
+async function runSwarm() {
+  if (running) return;
+
+  const query = document.getElementById('query-input').value.trim();
+  if (!query) return;
+
+  running = true;
+  document.getElementById('run-btn').disabled = true;
+
+  const pill = document.getElementById('status-pill');
+  pill.textContent = 'running';
+  pill.className = 'status-pill running';
+
+  resetUI();
+  switchTab('log');
+
+  try {
+    const resp = await fetch(`${API}/research`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    });
+
+    if (!resp.ok) throw new Error(`Server error: ${resp.status}`);
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();  // keep incomplete line
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6).trim();
+        if (!raw) continue;
+
+        let event;
+        try { event = JSON.parse(raw); } catch { continue; }
+
+        if (event.type === 'status') {
+          setAgentStatus(event.agent, event.status, event.detail || {});
+        }
+
+        if (event.type === 'answer') {
+          renderAnswer(event);
+          pill.textContent = 'done';
+          pill.className = 'status-pill done';
+          addLog('swarm', 'complete', { score: event.score });
+        }
+
+        if (event.type === 'error') {
+          pill.textContent = 'error';
+          pill.className = 'status-pill error';
+          addLog('swarm', 'error', { error: event.message });
+        }
+
+        // Show plan when planner finishes
+        if (event.type === 'status' && event.agent === 'planner' && event.status === 'done') {
+          const plan = event.detail?.plan;
+          // plan comes via orchestrator result store — check next event or fetch from detail
+        }
+
+        if (event.type === 'plan') {
+          renderPlan(event.plan);
+        }
+
+        if (event.type === 'done') break;
+      }
+    }
+
+  } catch (err) {
+    pill.textContent = 'error';
+    pill.className = 'status-pill error';
+    addLog('swarm', 'error', { error: err.message });
+    console.error(err);
+  } finally {
+    running = false;
+    document.getElementById('run-btn').disabled = false;
+  }
+}
+
+// Allow Enter key to trigger run
+document.addEventListener('DOMContentLoaded', () => {
+  buildCanvas();
+  document.getElementById('query-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') runSwarm();
+  });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# LLM backend (free tier, no credit card)
+groq>=0.9.0
+
+# Web search (no API key needed)
+ddgs>=0.1.0
+
+# API layer (next step)
+fastapi>=0.115.0
+uvicorn>=0.30.0
+
+# Utilities
+python-dotenv>=1.0.0
