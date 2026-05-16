@@ -38,7 +38,7 @@ async def health():
     return {"status": "ok"}
     
 @app.get("/")
-asyn def root():
+async def root():
     ui_path=os.path.join(os.path.dirname(__file__),"..","ui","index.html")
     return FileResponse(os.path.abspath(ui_path))
 
