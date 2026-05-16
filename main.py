@@ -5,7 +5,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
+from fastapi.responses import HTMLResponse
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -39,8 +39,8 @@ async def health():
     
 @app.get("/")
 async def root():
-    ui_path=os.path.join(os.path.dirname(__file__),"..","ui","index.html")
-    return FileResponse(os.path.abspath(ui_path))
+    with open("ui/index.html","r") as f:
+        return f.read()
 
 # ── Main endpoint ─────────────────────────────────────────────────────────────
 
