@@ -39,7 +39,7 @@ async def health():
     
 @app.get("/", response_class=HTMLResponse)
 async def root():
-           return HTMLResponse(conent=open("ui/index.html").read())
+           return HTMLResponse(content=open("ui/index.html").read())
 
 # ── Main endpoint ─────────────────────────────────────────────────────────────
 
