@@ -36,7 +36,11 @@ class ResearchRequest(BaseModel):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
+    
+@app.get("/")
+asyn def root():
+    ui_path=os.path.join(os.path.dirname(__file__),"..","ui","index.html")
+    return FileResponse(os.path.abspath(ui_path))
 
 # ── Main endpoint ─────────────────────────────────────────────────────────────
 
